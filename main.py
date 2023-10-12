@@ -1,3 +1,5 @@
+
+
 # Germán Andrés Xander 2023
 
 from machine import Pin, Timer, unique_id
@@ -12,44 +14,42 @@ from umqtt.robust import MQTTClient
 CLIENT_ID = ubinascii.hexlify(unique_id()).decode('utf-8')
 
 mqtt = MQTTClient(CLIENT_ID, SERVIDOR_MQTT,
-                  port=8883, keepalive=40, ssl=True)
+                  port=8883, keepalive=10, ssl=True)
 
-sw = Pin(23, Pin.IN)
 led = Pin(2, Pin.OUT)
-d = dht.DHT22(Pin(25))
+d = dht.DHT11(Pin(25))
+contador = 0
 
-def sub_cb(topic, msg):
-    print((topic, msg))
-    if msg==b"apagar":
-        led.value(0)
-    if msg==b"encender":
-        led.value(1)
-
-mqtt.set_callback(sub_cb)
-mqtt.connect()
-mqtt.subscribe(f"iot/{CLIENT_ID}/comando")
-
+def heartbeat(nada):
+    global contador
+    if contador > 5:
+        pulsos.deinit()
+        contador = 0
+        return
+    led.value(not led.value())
+    contador += 1
+  
 def transmitir(pin):
+    print("publicando")
+    mqtt.connect()
     mqtt.publish(f"iot/{CLIENT_ID}",datos)
+    mqtt.disconnect()
+    pulsos.init(period=150, mode=Timer.PERIODIC, callback=heartbeat)
 
-timer1 = Timer(1)
-timer1.init(period=20000, mode=Timer.PERIODIC, callback=transmitir)
-
-datos={}
+publicar = Timer(0)
+publicar.init(period=30000, mode=Timer.PERIODIC, callback=transmitir)
+pulsos = Timer(1)
 
 while True:
     try:
         d.measure()
-        temperatura=d.temperature()
-        humedad=d.humidity()
-        datos=json.dumps(OrderedDict([
+        temperatura = d.temperature()
+        humedad = d.humidity()
+        datos = json.dumps(OrderedDict([
             ('temperatura',temperatura),
             ('humedad',humedad)
         ]))
         print(datos)
     except OSError as e:
         print("sin sensor")
-    mqtt.check_msg()
     time.sleep(5)
-
-mqtt.disconnect()
